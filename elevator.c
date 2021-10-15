@@ -10,6 +10,7 @@
 #include <linux/uaccess.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
 
 MODULE_LICENSE("GPL");
 
@@ -59,6 +60,8 @@ struct list_head floor9;
 struct list_head floor10;
 struct list_head elevator;
 
+// lock 
+struct mutex lock;
 // shared data
 static int isRunning = 0;	// flag to indicate current elevator running status
 static char *state;		// the state of the elevator
@@ -70,8 +73,9 @@ static int waiting;		// the number of passengers waiting
 static int serviced;		// the total number of passengers serviced
 
 int run_elevator(void *data){
+	
 	while(isRunning == 1){
-
+		schedule();
 	}
 	return 0;
 }
@@ -81,13 +85,18 @@ int service_request(void *arg){
 	bool daily = false;
 	bool maintenance = false;
 	bool mail = false;
-	int start_floor = reqPtr->start; 	// worker starting floor
+	int start_floor;
+	Worker* worker = kmalloc(sizeof(Worker),__GFP_RECLAIM);
 
+	schedule();
+	mutex_lock(&lock);
+
+	start_floor = reqPtr->start; 	// worker starting floor
 	// creating a worker object and allocating space 
-	Worker* worker;
-	worker = kmalloc(sizeof(Worker),__GFP_RECLAIM);
 	worker->type = reqPtr->type;
 	worker->destination_floor = reqPtr->dest;
+	mutex_unlock(&lock);
+
 	if(worker->type == 1){
 		worker->weight = 170;
 		maintenance = true;
@@ -100,6 +109,10 @@ int service_request(void *arg){
 		worker->weight = 150;
 		daily = true;
 	}
+
+	schedule();
+	mutex_lock(&lock);
+
 	// adding the worker to the list of whatever floor they are waiting on
 	switch (start_floor){
 		case 1:
@@ -194,6 +207,7 @@ int service_request(void *arg){
 			break;
 	}
 	waiting += 1;	// increase total number of waiting passengers
+	mutex_unlock(&lock);
 	return 0;
 }
 
@@ -356,6 +370,7 @@ int systemCalls_init(void) {
 	INIT_LIST_HEAD(&floor9);
 	INIT_LIST_HEAD(&floor10);
 	INIT_LIST_HEAD(&elevator);
+	mutex_init(&lock);
 	return 0;
 }
 module_init(systemCalls_init);
@@ -423,6 +438,7 @@ static void systemCalls_exit(void) {
 		kfree(worker);
 	}
 
+	mutex_destroy(&lock);
 }
 module_exit(systemCalls_exit);
 
